@@ -10,7 +10,6 @@ single digits between 0 and 9.
 
 This script requires installing the following packages: torch, optuna
 
-Author: Elena Oikonomou
 Author: elena-ecn
 Date: 2021
 """

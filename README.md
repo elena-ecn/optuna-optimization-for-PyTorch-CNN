@@ -4,7 +4,7 @@ This project includes a hyperparameter optimization example of a PyTorch
 Convolutional Neural Network for the MNIST dataset of handwritten digits using 
 the hyperparameter optimization framework Optuna.
 
-It shows how to use Optuna with a PyTorch CNN that uses classes (OOP) in order  
+It shows how to use Optuna with a PyTorch CNN that uses classes (OOP) in order 
 to maximize test accuracy.
 
 #### About the dataset

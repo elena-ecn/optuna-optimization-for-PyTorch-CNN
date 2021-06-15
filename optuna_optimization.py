@@ -5,8 +5,8 @@ for the MNIST dataset of handwritten digits using the hyperparameter
 optimization framework Optuna.
 
 The MNIST dataset contains 60,000 training images and 10,000 testing images,
-where each sample is a small, square, 28×28 pixel grayscale image of handwritten
-single digits between 0 and 9.
+where each sample is a small, square, 28×28 pixel grayscale image of
+handwritten single digits between 0 and 9.
 
 This script requires installing the following packages: torch, optuna
 

@@ -1,0 +1,218 @@
+"""Optimization study for a PyTorch CNN with Optuna.
+
+Hyperparameter optimization example of a PyTorch Convolutional Neural Network
+for the MNIST dataset of handwritten digits using the hyperparameter
+optimization framework Optuna.
+
+This script requires installing the following packages: torch, optuna
+
+Author: Elena Oikonomou
+Date: Spring 2021
+"""
+
+import os
+import torch
+import torchvision
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import optuna
+from optuna.trial import TrialState
+
+
+class Net(nn.Module):
+    """CNN for the MNIST dataset of handwritten digits"""
+    def __init__(self, trial, num_conv_layers, num_filters, num_neurons, drop_conv2,  drop_fc1):
+        super(Net, self).__init__()
+        in_size = 28
+        kernel_size = 3
+
+        # Define the convolutional layers
+        self.convs = nn.ModuleList([nn.Conv2d(1, num_filters[0], kernel_size=(3, 3))])  # List with the Conv layers
+        out_size = in_size - kernel_size + 1                                            # Size of the output kernel
+        out_size = int(out_size / 2)                                                    # Size after pooling
+        for i in range(1, num_conv_layers):
+            self.convs.append(nn.Conv2d(in_channels=num_filters[i-1], out_channels=num_filters[i], kernel_size=(3, 3)))
+            out_size = out_size - kernel_size + 1                                       # Size of the output kernel
+            out_size = int(out_size/2)                                                  # Size after pooling
+
+        self.conv2_drop = nn.Dropout2d(p=drop_conv2)                                    # Dropout for conv2
+        self.out_feature = num_filters[num_conv_layers-1] * out_size * out_size         # Size of flattened features
+        self.fc1 = nn.Linear(self.out_feature, num_neurons)
+        self.fc2 = nn.Linear(num_neurons, 10)
+        self.p1 = drop_fc1                                                              # Dropout ratio for FC1
+
+        # Initialize weights with He initialization
+        for i in range(1, num_conv_layers):
+            nn.init.kaiming_normal_(self.convs[i].weight, nonlinearity='relu')
+            if self.convs[i].bias is not None:
+                nn.init.constant_(self.convs[i].bias, 0)
+        nn.init.kaiming_normal_(self.fc1.weight, nonlinearity='relu')
+
+    def forward(self, x):
+        """Forward propagation.
+
+        Inputs:
+            - x(torch.Tensor): Input tensor of size [N,1,28,28]
+        """
+        for i, conv_i in enumerate(self.convs):  # For each convolutional layer
+            if i == 2:
+                x = F.relu(F.max_pool2d(self.conv2_drop(conv_i(x)), 2))  # Ci, dropout, max-pooling, RelU
+            else:
+                x = F.relu(F.max_pool2d(conv_i(x), 2))                   # Ci, max-pooling, RelU
+
+        x = x.view(-1, self.out_feature)                     # Flatten tensor
+        x = F.relu(self.fc1(x))                              # FC1, RelU
+        x = F.dropout(x, p=self.p1, training=self.training)  # Apply dropout after FC1 only when training
+        x = self.fc2(x)                                      # FC2
+        return F.log_softmax(x, dim=1)                       # log(softmax(x))
+
+
+def train(network, optimizer):
+    """Trains the model."""
+    network.train()  # Set the module in training mode (only affects certain modules)
+    for batch_i, (data, target) in enumerate(train_loader):  # For each batch
+        optimizer.zero_grad()                                 # Clear gradients
+        output = network(data.to(device))                     # Forward propagation
+        loss = F.nll_loss(output, target.to(device))          # Compute loss (negative log likelihood: −log(y))
+        loss.backward()                                       # Compute gradients
+        optimizer.step()                                      # Update weights
+
+
+def test(network):
+    """Tests the model."""
+    network.eval()         # Set the module in evaluation mode (only affects certain modules)
+    correct = 0
+    with torch.no_grad():  # Disable gradient calculation (when you are sure that you will not call Tensor.backward())
+        for data, target in test_loader:                   # For each batch
+            output = network(data.to(device))               # Forward propagation
+            pred = output.data.max(1, keepdim=True)[1]      # Find max value in each row, return indexes of max values
+            correct += pred.eq(target.to(device).data.view_as(pred)).sum()  # Compute correct predictions
+
+    accuracy_test = correct / len(test_loader.dataset)
+    return accuracy_test
+
+
+def objective(trial):
+    """Objective function to be optimized by Optuna.
+
+    Hyperparameters chosen to be optimized: optimizer, learning rate,
+    dropout values, number of convolutional layers, number of filters,
+    number of neurons.
+
+    Inputs:
+        - trial(): The x,y goal coordinates of the human (2,) ToDo
+    Returns:
+        - accuracy(float): The test accuracy. Parameter to be maximized.
+    """
+
+    # Define range of values to be tested for the hyperparameters
+    num_conv_layers = trial.suggest_int("num_conv_layers", 2, 3)  # Number of convolutional layers
+    num_filters = [int(trial.suggest_discrete_uniform("num_filter_"+str(i), 16, 128, 16))
+                   for i in range(num_conv_layers)]              # Number of filters for the convolutional layers
+    num_neurons = trial.suggest_int("num_neurons", 10, 400, 10)  # Number of neurons of FC1 layer
+    drop_conv2 = trial.suggest_float("drop_conv2", 0.2, 0.5)     # Dropout for convolutional layer 2
+    drop_fc1 = trial.suggest_float("drop_fc1", 0.2, 0.5)         # Dropout for FC1 layer
+
+    # Generate the model
+    model = Net(trial, num_conv_layers, num_filters, num_neurons, drop_conv2,  drop_fc1).to(device)
+
+    # Generate the optimizers
+    optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "RMSprop", "SGD"])  # Optimizers
+    lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)                                 # Learning rates
+    optimizer = getattr(optim, optimizer_name)(model.parameters(), lr=lr)
+
+    # Training of the model
+    for epoch in range(n_epochs):
+        train(model, optimizer)  # Train
+        accuracy = test(model)   # Evaluation of the model
+
+        # For pruning (stops trial early if not promising)
+        trial.report(accuracy, epoch)
+        # Handle pruning based on the intermediate value.
+        if trial.should_prune():
+            raise optuna.exceptions.TrialPruned()
+
+    print('&'*30, type(accuracy))
+    print('&'*30, type(trial))
+
+    return accuracy
+
+
+if __name__ == '__main__':
+
+    # -------------------------------------------------------------------------
+    # Optimization study for a PyTorch CNN with Optuna
+    # -------------------------------------------------------------------------
+
+    # Use cuda if available for faster computations
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Parameters
+    n_epochs = 5
+    batch_size_train = 64
+    batch_size_test = 1000
+
+    random_seed = 1                       # this will make runs repeatable
+    torch.backends.cudnn.enabled = False  # disable cuDNN use of nondeterministic algorithms
+    torch.manual_seed(random_seed)
+
+    # Create directory 'files', if it doesn't exist, to save the dataset
+    directory_name = 'files'
+    if not os.path.exists(directory_name):
+        os.mkdir(directory_name)
+
+    # Download MNIST dataset to 'files' directory and normalize it
+    train_loader = torch.utils.data.DataLoader(
+        torchvision.datasets.MNIST('/files/', train=True, download=True,
+                                   transform=torchvision.transforms.Compose([
+                                       torchvision.transforms.ToTensor(),
+                                       torchvision.transforms.Normalize((0.1307,), (0.3081,))])),
+        batch_size=batch_size_train, shuffle=True)
+
+    test_loader = torch.utils.data.DataLoader(
+        torchvision.datasets.MNIST('/files/', train=False, download=True,
+                                   transform=torchvision.transforms.Compose([
+                                       torchvision.transforms.ToTensor(),
+                                       torchvision.transforms.Normalize((0.1307,), (0.3081,))])),
+        batch_size=batch_size_test, shuffle=True)
+
+    # Create an Optuna study to maximize test accuracy
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=100)
+
+    # -------------------------------------------------------------------------
+    # Results
+    # -------------------------------------------------------------------------
+
+    # Find number of completed and pruned trials
+    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+
+    # Display the study results
+    print("Study statistics: ")
+    print("  Number of finished trials: ", len(study.trials))
+    print("  Number of pruned trials: ", len(pruned_trials))
+    print("  Number of complete trials: ", len(complete_trials))
+
+    trial = study.best_trial
+    print("Best trial:")
+    print("  Value: ", trial.value)
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print("    {}: {}".format(key, value))
+
+    # Compute and show the most important hyperparameters
+    most_important_parameters = optuna.importance.get_param_importances(study, target=None)
+    print('\nMost important hyperparameters:')
+    for key, value in most_important_parameters.items():
+        print('  {}:{}{:.2f}%'.format(key, (15-len(key))*' ', value))
+
+    # Show results in a dataframe and save to file
+    df = study.trials_dataframe().drop(['datetime_start', 'datetime_complete', 'duration'], axis=1)  # exclude columns
+    df = df.loc[df['state'] == 'COMPLETE']         # Keep only results that did not prune
+    df = df.drop('state', axis=1)                  # Exclude state column
+    df = df.sort_values('value')                   # Sort based on accuracy
+    df.to_csv('optuna_results.csv', index=False)   # Save to csv file
+
+    print("Results:\n".format(df))

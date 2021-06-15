@@ -7,7 +7,7 @@ optimization framework Optuna.
 This script requires installing the following packages: torch, optuna
 
 Author: Elena Oikonomou
-Date: Spring 2021
+Date: 2021
 """
 
 import os
@@ -21,11 +21,31 @@ from optuna.trial import TrialState
 
 
 class Net(nn.Module):
-    """CNN for the MNIST dataset of handwritten digits"""
-    def __init__(self, trial, num_conv_layers, num_filters, num_neurons, drop_conv2,  drop_fc1):
-        super(Net, self).__init__()
-        in_size = 28
-        kernel_size = 3
+    """CNN for the MNIST dataset of handwritten digits
+
+    Attributes:
+        - convs (torch.nn.modules.container.ModuleList):   List with the convolutional layers
+        - conv2_drop (torch.nn.modules.dropout.Dropout2d): Dropout for conv layer 2
+        - out_feature (int):                               Size of flattened features
+        - fc1 (torch.nn.modules.linear.Linear):            Fully Connected layer 1
+        - fc2 (torch.nn.modules.linear.Linear):            Fully Connected layer 2
+        - p1 (float):                                      Dropout ratio for FC1
+
+    Methods:
+        - forward(x): Does forward propagation
+    """
+    def __init__(self, trial, num_conv_layers, num_filters, num_neurons, drop_conv2, drop_fc1):
+        """Parameters:
+            - trial (optuna.trial._trial.Trial): Optuna trial
+            - num_conv_layers (int):             Number of convolutional layers
+            - num_filters (list):                Number of filters of conv layers
+            - num_neurons (int):                 Number of neurons of FC layers
+            - drop_conv2 (float):                Dropout ratio for conv layer 2
+            - drop_fc1 (float):                  Dropout ratio for FC1
+        """
+        super(Net, self).__init__()                                                     # Initialize parent class
+        in_size = 28                                                                    # Input image size (28 pixels)
+        kernel_size = 3                                                                 # Convolution filter size
 
         # Define the convolutional layers
         self.convs = nn.ModuleList([nn.Conv2d(1, num_filters[0], kernel_size=(3, 3))])  # List with the Conv layers
@@ -38,11 +58,11 @@ class Net(nn.Module):
 
         self.conv2_drop = nn.Dropout2d(p=drop_conv2)                                    # Dropout for conv2
         self.out_feature = num_filters[num_conv_layers-1] * out_size * out_size         # Size of flattened features
-        self.fc1 = nn.Linear(self.out_feature, num_neurons)
-        self.fc2 = nn.Linear(num_neurons, 10)
+        self.fc1 = nn.Linear(self.out_feature, num_neurons)                             # Fully Connected layer 1
+        self.fc2 = nn.Linear(num_neurons, 10)                                           # Fully Connected layer 2
         self.p1 = drop_fc1                                                              # Dropout ratio for FC1
 
-        # Initialize weights with He initialization
+        # Initialize weights with the He initialization
         for i in range(1, num_conv_layers):
             nn.init.kaiming_normal_(self.convs[i].weight, nonlinearity='relu')
             if self.convs[i].bias is not None:
@@ -52,24 +72,32 @@ class Net(nn.Module):
     def forward(self, x):
         """Forward propagation.
 
-        Inputs:
-            - x(torch.Tensor): Input tensor of size [N,1,28,28]
+        Parameters:
+            - x (torch.Tensor): Input tensor of size [N,1,28,28]
+        Returns:
+            - (torch.Tensor): The output tensor after forward propagation [N,10]
         """
         for i, conv_i in enumerate(self.convs):  # For each convolutional layer
-            if i == 2:
-                x = F.relu(F.max_pool2d(self.conv2_drop(conv_i(x)), 2))  # Ci, dropout, max-pooling, RelU
+            if i == 2:  # Add dropout if layer 2
+                x = F.relu(F.max_pool2d(self.conv2_drop(conv_i(x)), 2))  # Conv_i, dropout, max-pooling, RelU
             else:
-                x = F.relu(F.max_pool2d(conv_i(x), 2))                   # Ci, max-pooling, RelU
+                x = F.relu(F.max_pool2d(conv_i(x), 2))                   # Conv_i, max-pooling, RelU
 
         x = x.view(-1, self.out_feature)                     # Flatten tensor
         x = F.relu(self.fc1(x))                              # FC1, RelU
         x = F.dropout(x, p=self.p1, training=self.training)  # Apply dropout after FC1 only when training
         x = self.fc2(x)                                      # FC2
+
         return F.log_softmax(x, dim=1)                       # log(softmax(x))
 
 
 def train(network, optimizer):
-    """Trains the model."""
+    """Trains the model.
+
+    Parameters:
+        - network (__main__.Net):              The CNN
+        - optimizer (torch.optim.<optimizer>): The optimizer for the CNN
+    """
     network.train()  # Set the module in training mode (only affects certain modules)
     for batch_i, (data, target) in enumerate(train_loader):  # For each batch
         optimizer.zero_grad()                                 # Clear gradients
@@ -80,7 +108,14 @@ def train(network, optimizer):
 
 
 def test(network):
-    """Tests the model."""
+    """Tests the model.
+
+    Parameters:
+        - network (__main__.Net): The CNN
+
+    Returns:
+        - accuracy_test (torch.Tensor): The test accuracy
+    """
     network.eval()         # Set the module in evaluation mode (only affects certain modules)
     correct = 0
     with torch.no_grad():  # Disable gradient calculation (when you are sure that you will not call Tensor.backward())
@@ -90,6 +125,7 @@ def test(network):
             correct += pred.eq(target.to(device).data.view_as(pred)).sum()  # Compute correct predictions
 
     accuracy_test = correct / len(test_loader.dataset)
+
     return accuracy_test
 
 
@@ -97,13 +133,13 @@ def objective(trial):
     """Objective function to be optimized by Optuna.
 
     Hyperparameters chosen to be optimized: optimizer, learning rate,
-    dropout values, number of convolutional layers, number of filters,
-    number of neurons.
+    dropout values, number of convolutional layers, number of filters of
+    convolutional layers, number of neurons of fully connected layers.
 
     Inputs:
-        - trial(): The x,y goal coordinates of the human (2,) ToDo
+        - trial (optuna.trial._trial.Trial): Optuna trial
     Returns:
-        - accuracy(float): The test accuracy. Parameter to be maximized.
+        - accuracy(torch.Tensor): The test accuracy. Parameter to be maximized.
     """
 
     # Define range of values to be tested for the hyperparameters
@@ -124,17 +160,14 @@ def objective(trial):
 
     # Training of the model
     for epoch in range(n_epochs):
-        train(model, optimizer)  # Train
-        accuracy = test(model)   # Evaluation of the model
+        train(model, optimizer)  # Train the model
+        accuracy = test(model)   # Evaluate the model
 
         # For pruning (stops trial early if not promising)
         trial.report(accuracy, epoch)
         # Handle pruning based on the intermediate value.
         if trial.should_prune():
             raise optuna.exceptions.TrialPruned()
-
-    print('&'*30, type(accuracy))
-    print('&'*30, type(trial))
 
     return accuracy
 

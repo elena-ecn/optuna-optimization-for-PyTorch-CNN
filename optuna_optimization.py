@@ -202,6 +202,9 @@ if __name__ == '__main__':
     number_of_trials = 100                # Number of Optuna trials
 
     # Limit number of observations for faster computation
+    # *** Note: For more accurate results, do not limit the number of observations. ***
+    #           Set factor to: 938 for train (instead of 500) and
+    #                           10 for test  (instead of 5)
     number_of_train_examples = 500 * batch_size_train  # Max train observations
     number_of_test_examples = 5 * batch_size_test      # Max test observations
     # -------------------------------------------------------------------------

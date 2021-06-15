@@ -4,6 +4,10 @@ Hyperparameter optimization example of a PyTorch Convolutional Neural Network
 for the MNIST dataset of handwritten digits using the hyperparameter
 optimization framework Optuna.
 
+The MNIST dataset contains 60,000 training images and 10,000 testing images,
+where each sample is a small, square, 28×28 pixel grayscale image of handwritten
+single digits between 0 and 9.
+
 This script requires installing the following packages: torch, optuna
 
 Author: Elena Oikonomou
@@ -100,6 +104,11 @@ def train(network, optimizer):
     """
     network.train()  # Set the module in training mode (only affects certain modules)
     for batch_i, (data, target) in enumerate(train_loader):  # For each batch
+
+        # Limit training data for faster computation
+        if batch_i * batch_size_train >= number_of_train_examples:
+            break
+
         optimizer.zero_grad()                                 # Clear gradients
         output = network(data.to(device))                     # Forward propagation
         loss = F.nll_loss(output, target.to(device))          # Compute loss (negative log likelihood: −log(y))
@@ -119,7 +128,12 @@ def test(network):
     network.eval()         # Set the module in evaluation mode (only affects certain modules)
     correct = 0
     with torch.no_grad():  # Disable gradient calculation (when you are sure that you will not call Tensor.backward())
-        for data, target in test_loader:                   # For each batch
+        for batch_i, (data, target) in enumerate(test_loader):  # For each batch
+
+            # Limit testing data for faster computation
+            if batch_i * batch_size_test >= number_of_test_examples:
+                break
+
             output = network(data.to(device))               # Forward propagation
             pred = output.data.max(1, keepdim=True)[1]      # Find max value in each row, return indexes of max values
             correct += pred.eq(target.to(device).data.view_as(pred)).sum()  # Compute correct predictions
@@ -181,13 +195,20 @@ if __name__ == '__main__':
     # Use cuda if available for faster computations
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Parameters
-    n_epochs = 5
-    batch_size_train = 64
-    batch_size_test = 1000
+    # --- Parameters ----------------------------------------------------------
+    n_epochs = 10                         # Number of training epochs
+    batch_size_train = 64                 # Batch size for training data
+    batch_size_test = 1000                # Batch size for testing data
+    number_of_trials = 100                # Number of Optuna trials
 
-    random_seed = 1                       # this will make runs repeatable
-    torch.backends.cudnn.enabled = False  # disable cuDNN use of nondeterministic algorithms
+    # Limit number of observations for faster computation
+    number_of_train_examples = 500 * batch_size_train  # Max train observations
+    number_of_test_examples = 5 * batch_size_test      # Max test observations
+    # -------------------------------------------------------------------------
+
+    # Make runs repeatable
+    random_seed = 1
+    torch.backends.cudnn.enabled = False  # Disable cuDNN use of nondeterministic algorithms
     torch.manual_seed(random_seed)
 
     # Create directory 'files', if it doesn't exist, to save the dataset
@@ -212,7 +233,7 @@ if __name__ == '__main__':
 
     # Create an Optuna study to maximize test accuracy
     study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=100)
+    study.optimize(objective, n_trials=number_of_trials)
 
     # -------------------------------------------------------------------------
     # Results
@@ -239,13 +260,13 @@ if __name__ == '__main__':
     most_important_parameters = optuna.importance.get_param_importances(study, target=None)
     print('\nMost important hyperparameters:')
     for key, value in most_important_parameters.items():
-        print('  {}:{}{:.2f}%'.format(key, (15-len(key))*' ', value))
+        print('  {}:{}{:.2f}%'.format(key, (15-len(key))*' ', value*100))
 
     # Show results in a dataframe and save to file
-    df = study.trials_dataframe().drop(['datetime_start', 'datetime_complete', 'duration'], axis=1)  # exclude columns
-    df = df.loc[df['state'] == 'COMPLETE']         # Keep only results that did not prune
-    df = df.drop('state', axis=1)                  # Exclude state column
-    df = df.sort_values('value')                   # Sort based on accuracy
-    df.to_csv('optuna_results.csv', index=False)   # Save to csv file
+    df = study.trials_dataframe().drop(['datetime_start', 'datetime_complete', 'duration'], axis=1)  # Exclude columns
+    df = df.loc[df['state'] == 'COMPLETE']        # Keep only results that did not prune
+    df = df.drop('state', axis=1)                 # Exclude state column
+    df = df.sort_values('value')                  # Sort based on accuracy
+    df.to_csv('optuna_results.csv', index=False)  # Save to csv file
 
-    print("Results:\n".format(df))
+    print("\nOverall Results (ordered by accuracy):\n {}".format(df))

@@ -11,6 +11,7 @@ single digits between 0 and 9.
 This script requires installing the following packages: torch, optuna
 
 Author: Elena Oikonomou
+Author: elena-ecn
 Date: 2021
 """
 
@@ -25,7 +26,7 @@ from optuna.trial import TrialState
 
 
 class Net(nn.Module):
-    """CNN for the MNIST dataset of handwritten digits
+    """CNN for the MNIST dataset of handwritten digits.
 
     Attributes:
         - convs (torch.nn.modules.container.ModuleList):   List with the convolutional layers
@@ -106,7 +107,7 @@ def train(network, optimizer):
     for batch_i, (data, target) in enumerate(train_loader):  # For each batch
 
         # Limit training data for faster computation
-        if batch_i * batch_size_train >= number_of_train_examples:
+        if batch_i * batch_size_train > number_of_train_examples:
             break
 
         optimizer.zero_grad()                                 # Clear gradients
@@ -131,7 +132,7 @@ def test(network):
         for batch_i, (data, target) in enumerate(test_loader):  # For each batch
 
             # Limit testing data for faster computation
-            if batch_i * batch_size_test >= number_of_test_examples:
+            if batch_i * batch_size_test > number_of_test_examples:
                 break
 
             output = network(data.to(device))               # Forward propagation
@@ -200,13 +201,18 @@ if __name__ == '__main__':
     batch_size_train = 64                 # Batch size for training data
     batch_size_test = 1000                # Batch size for testing data
     number_of_trials = 100                # Number of Optuna trials
+    limit_obs = True                      # Limit number of observations for faster computation
 
-    # Limit number of observations for faster computation
-    # *** Note: For more accurate results, do not limit the number of observations. ***
-    #           Set factor to: 938 for train (instead of 500) and
-    #                           10 for test  (instead of 5)
-    number_of_train_examples = 500 * batch_size_train  # Max train observations
-    number_of_test_examples = 5 * batch_size_test      # Max test observations
+    # *** Note: For more accurate results, do not limit the observations.
+    #           If not limited, however, it might take a very long time to run.
+    #           Another option is to limit the number of epochs. ***
+
+    if limit_obs:  # Limit number of observations
+        number_of_train_examples = 500 * batch_size_train  # Max train observations
+        number_of_test_examples = 5 * batch_size_test      # Max test observations
+    else:
+        number_of_train_examples = 60000                   # Max train observations
+        number_of_test_examples = 10000                    # Max test observations
     # -------------------------------------------------------------------------
 
     # Make runs repeatable

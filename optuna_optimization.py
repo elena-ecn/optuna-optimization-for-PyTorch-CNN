@@ -8,7 +8,8 @@ The MNIST dataset contains 60,000 training images and 10,000 testing images,
 where each sample is a small, square, 28×28 pixel grayscale image of
 handwritten single digits between 0 and 9.
 
-This script requires installing the following packages: torch, optuna
+This script requires installing the following packages:
+  torch, pandas, optuna
 
 Author: elena-ecn
 Date: 2021
@@ -247,12 +248,12 @@ if __name__ == '__main__':
     # Results
     # -------------------------------------------------------------------------
 
-    # Find number of completed and pruned trials
+    # Find number of pruned and completed trials
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-    # Display the study results
-    print("Study statistics: ")
+    # Display the study statistics
+    print("\nStudy statistics: ")
     print("  Number of finished trials: ", len(study.trials))
     print("  Number of pruned trials: ", len(pruned_trials))
     print("  Number of complete trials: ", len(complete_trials))
@@ -264,17 +265,20 @@ if __name__ == '__main__':
     for key, value in trial.params.items():
         print("    {}: {}".format(key, value))
 
-    # Compute and show the most important hyperparameters
-    most_important_parameters = optuna.importance.get_param_importances(study, target=None)
-    print('\nMost important hyperparameters:')
-    for key, value in most_important_parameters.items():
-        print('  {}:{}{:.2f}%'.format(key, (15-len(key))*' ', value*100))
-
-    # Show results in a dataframe and save to file
+    # Save results to csv file
     df = study.trials_dataframe().drop(['datetime_start', 'datetime_complete', 'duration'], axis=1)  # Exclude columns
     df = df.loc[df['state'] == 'COMPLETE']        # Keep only results that did not prune
     df = df.drop('state', axis=1)                 # Exclude state column
     df = df.sort_values('value')                  # Sort based on accuracy
     df.to_csv('optuna_results.csv', index=False)  # Save to csv file
 
+    # Display results in a dataframe
     print("\nOverall Results (ordered by accuracy):\n {}".format(df))
+
+    # Find the most important hyperparameters
+    most_important_parameters = optuna.importance.get_param_importances(study, target=None)
+
+    # Display the most important hyperparameters
+    print('\nMost important hyperparameters:')
+    for key, value in most_important_parameters.items():
+        print('  {}:{}{:.2f}%'.format(key, (15-len(key))*' ', value*100))

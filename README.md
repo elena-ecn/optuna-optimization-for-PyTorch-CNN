@@ -18,6 +18,7 @@ Project is created with:
 * Python 3.8
 * Torch 1.9.0
 * Optuna 2.6.0
+* Pandas 1.2.4
 
 Installation
 ------------
@@ -30,6 +31,7 @@ git clone https://github.com/elena-ecn/optuna-optimization-for-PyTorch-CNN.git
 The following dependencies need to be installed:
 * PyTorch: [pytorch.org/get-started](https://pytorch.org/get-started/locally/)
 * Optuna: ```pip install optuna```
+* Pandas
 
 License
 -------
